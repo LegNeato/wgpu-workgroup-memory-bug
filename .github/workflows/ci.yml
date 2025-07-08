@@ -39,8 +39,12 @@ jobs:
         sudo apt-get update
         sudo apt install -y xvfb libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers
     
-    - name: Build
-      run: cargo build --verbose
+    - name: Run test script
+      shell: bash
+      run: ./run_test.sh
     
-    - name: Run test
-      run: cargo run --verbose
+    - name: Upload SPIR-V artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: shader-spirv-${{ matrix.os }}
+        path: "*.spv"

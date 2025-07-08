@@ -1,0 +1,10 @@
+[package]
+name = "shader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+spirv-std = { git = "https://github.com/rust-gpu/rust-gpu.git", branch = "main" }
+
+[lib]
+crate-type = ["dylib"]
