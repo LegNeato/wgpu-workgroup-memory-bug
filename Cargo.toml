@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-wgpu = { version = "25.0.2", features = ["spirv", "vulkan-portability", "static-dxc", "wgsl"] }
+wgpu = { git = "https://github.com/LegNeato/wgpu", branch = "fixhlsl", features = [
+    "spirv",
+    "vulkan-portability",
+    "static-dxc"
+] }
 bytemuck = "1.14"
 pollster = "0.3"
 env_logger = "0.11"
