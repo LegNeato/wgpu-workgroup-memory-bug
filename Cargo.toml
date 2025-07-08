@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-wgpu = { git = "https://github.com/LegNeato/wgpu", branch = "fixhlsl", features = [
+wgpu = { path = "../wgpu/wgpu", features = [
     "spirv",
     "vulkan-portability",
     "static-dxc"
 ] }
-naga = { git = "https://github.com/LegNeato/wgpu", branch = "fixhlsl", features = [
+naga = { path = "../wgpu/naga", features = [
     "spv-in",
     "hlsl-out",
     "wgsl-out"

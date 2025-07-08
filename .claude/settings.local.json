@@ -5,7 +5,12 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(curl:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(./run_test.sh:*)",
+      "Bash(cargo check:*)",
+      "Bash(rg:*)",
+      "WebFetch(domain:productionresultssa15.blob.core.windows.net)",
+      "Bash(ls:*)"
     ],
     "deny": []
   }

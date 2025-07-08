@@ -95,19 +95,7 @@ async fn run() {
 
         // Generate HLSL
         let mut hlsl_string = String::new();
-        let options = naga::back::hlsl::Options {
-            shader_model: naga::back::hlsl::ShaderModel::V5_1,
-            binding_map: Default::default(),
-            fake_missing_bindings: false,
-            special_constants_binding: None,
-            push_constants_target: None,
-            zero_initialize_workgroup_memory: true,
-            dynamic_storage_buffer_offsets_targets: Default::default(),
-            force_loop_bounding: false,
-            restrict_indexing: false,
-            sampler_heap_target: Default::default(),
-            sampler_buffer_binding_map: Default::default(),
-        };
+        let options = naga::back::hlsl::Options::default();
 
         let pipeline_options = naga::back::hlsl::PipelineOptions {
             entry_point: Some((naga::ShaderStage::Compute, "main_cs".to_string())),
