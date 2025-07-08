@@ -7,7 +7,7 @@ fn main() {
 
 async fn run() {
     // Initialize wgpu
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         ..Default::default()
     });
@@ -22,14 +22,13 @@ async fn run() {
         .expect("Failed to find an appropriate adapter");
 
     let (device, queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-            },
-            None,
-        )
+        .request_device(&wgpu::DeviceDescriptor {
+            label: None,
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            memory_hints: Default::default(),
+            trace: Default::default(),
+        })
         .await
         .expect("Failed to create device");
 
@@ -115,8 +114,9 @@ async fn run() {
         label: Some("Compute Pipeline"),
         layout: Some(&pipeline_layout),
         module: &shader,
-        entry_point: "main",
+        entry_point: Some("main"),
         compilation_options: Default::default(),
+        cache: None,
     });
 
     // Execute compute pass
@@ -145,15 +145,15 @@ async fn run() {
     buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
         sender.send(result).unwrap();
     });
-    device.poll(wgpu::Maintain::Wait);
+    let _ = device.poll(wgpu::MaintainBase::Wait);
     receiver.recv().unwrap().unwrap();
 
     let data = buffer_slice.get_mapped_range();
     let result = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-    
+
     println!("Result: {}", result);
     println!("Expected: 2080 (sum of 1..64)");
-    
+
     if result != 2080 {
         println!("❌ FAIL: Got {} instead of 2080", result);
         std::process::exit(1);
