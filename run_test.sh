@@ -28,7 +28,16 @@ echo
 
 # Run the test
 echo "Running workgroup memory test..."
-cargo run --release
+# Set trace environment to dump shader
+RUST_LOG=trace WGPU_TRACE=trace.txt cargo run --release
+
+# Check if HLSL was generated on Windows
+if [ -f "generated.hlsl" ]; then
+    echo
+    echo "=== Generated HLSL saved to generated.hlsl ==="
+    echo "First 50 lines:"
+    head -n 50 generated.hlsl
+fi
 
 # Clean up if requested
 if [ "$1" = "--clean" ]; then

@@ -9,6 +9,7 @@ wgpu = { git = "https://github.com/LegNeato/wgpu", branch = "fixhlsl", features 
     "vulkan-portability",
     "static-dxc"
 ] }
+naga = { git = "https://github.com/LegNeato/wgpu", branch = "fixhlsl", features = ["spv-in", "hlsl-out", "wgsl-out"] }
 bytemuck = "1.14"
 pollster = "0.3"
 env_logger = "0.11"

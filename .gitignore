@@ -3,3 +3,5 @@
 Cargo.lock
 /*.spv
 /manifest.json
+/generated.hlsl
+/trace.txt

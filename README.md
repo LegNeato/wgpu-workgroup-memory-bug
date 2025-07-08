@@ -24,11 +24,27 @@ The value 3 (which is 1 + 2) suggests that only threads 0 and 1 are properly syn
 
 ## Running the Test
 
+### Prerequisites
+
+The test requires `cargo-gpu` to compile the Rust shader to SPIR-V. The script will install it automatically if not present.
+
+### Run Test
+
 ```bash
-cargo run
+./run_test.sh
 ```
 
-The test will print the result and exit with code 1 if it fails.
+This script will:
+1. Install cargo-gpu if needed
+2. Compile the rust-gpu shader to SPIR-V
+3. Run the wgpu test program
+4. Report whether the test passes or fails
+
+### Clean Build Artifacts
+
+```bash
+./run_test.sh --clean
+```
 
 ## CI Status
 

@@ -1,18 +1,30 @@
 use wgpu::util::DeviceExt;
 
 fn main() {
-    env_logger::init();
+    // Enable detailed logging for wgpu/naga
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,wgpu=debug,naga=trace"),
+    )
+    .init();
     pollster::block_on(run());
 }
 
 async fn run() {
+    // Enable wgpu trace if set
+    if let Ok(trace_path) = std::env::var("WGPU_TRACE") {
+        println!(
+            "WGPU trace enabled, output will be written to: {}",
+            trace_path
+        );
+    }
+
     // Force DX12 on Windows to trigger the bug
     let backends = if cfg!(windows) {
         wgpu::Backends::DX12
     } else {
         wgpu::Backends::all()
     };
-    
+
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends,
         backend_options: wgpu::BackendOptions {
@@ -50,6 +62,79 @@ async fn run() {
 
     // Load the SPIR-V shader compiled by rust-gpu
     let shader_spirv = include_bytes!("../shader.spv");
+
+    // Manually convert SPIR-V to see the intermediate HLSL
+    if cfg!(windows) {
+        println!("=== Attempting to dump HLSL output ===");
+
+        // Parse SPIR-V using Naga
+        let options = naga::front::spv::Options::default();
+        let module = match naga::front::spv::parse_u8_slice(shader_spirv, &options) {
+            Ok(module) => {
+                println!("Successfully parsed SPIR-V module");
+                module
+            }
+            Err(e) => {
+                eprintln!("Failed to parse SPIR-V: {:?}", e);
+                panic!("SPIR-V parsing failed");
+            }
+        };
+
+        // Validate the module
+        let mut validator = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        );
+        let module_info = match validator.validate(&module) {
+            Ok(info) => info,
+            Err(e) => {
+                eprintln!("Module validation failed: {:?}", e);
+                panic!("Validation failed");
+            }
+        };
+
+        // Generate HLSL
+        let mut hlsl_string = String::new();
+        let options = naga::back::hlsl::Options {
+            shader_model: naga::back::hlsl::ShaderModel::V5_1,
+            binding_map: Default::default(),
+            fake_missing_bindings: false,
+            special_constants_binding: None,
+            push_constants_target: None,
+            zero_initialize_workgroup_memory: true,
+            dynamic_storage_buffer_offsets_targets: Default::default(),
+            force_loop_bounding: false,
+            restrict_indexing: false,
+            sampler_heap_target: Default::default(),
+            sampler_buffer_binding_map: Default::default(),
+        };
+
+        let pipeline_options = naga::back::hlsl::PipelineOptions {
+            entry_point: Some((naga::ShaderStage::Compute, "main_cs".to_string())),
+        };
+
+        match naga::back::hlsl::Writer::new(&mut hlsl_string, &options, &pipeline_options).write(
+            &module,
+            &module_info,
+            None,
+        ) {
+            Ok(_) => {
+                println!("=== Generated HLSL ===");
+                println!("{}", hlsl_string);
+                println!("=== End HLSL ===");
+
+                // Save to file for easier inspection
+                std::fs::write("generated.hlsl", &hlsl_string).ok();
+                println!("(Also saved to generated.hlsl)");
+            }
+            Err(e) => {
+                eprintln!("Failed to generate HLSL: {:?}", e);
+            }
+        }
+
+        println!();
+    }
+
     // Convert bytes to u32 array for SPIR-V
     let spirv_data = wgpu::util::make_spirv(shader_spirv);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -169,15 +254,21 @@ async fn run() {
 
     let data = buffer_slice.get_mapped_range();
     let result = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-    
+
     println!("Test: Parallel reduction sum of 1..=64");
-    println!("Using: rust-gpu compiled SPIR-V → wgpu → Naga → {}", 
-             if cfg!(windows) { "HLSL/DXC" } else { "Metal/Vulkan" });
+    println!(
+        "Using: rust-gpu compiled SPIR-V → wgpu → Naga → {}",
+        if cfg!(windows) {
+            "HLSL/DXC"
+        } else {
+            "Metal/Vulkan"
+        }
+    );
     println!();
     println!("Result: {}", result);
     println!("Expected: 2080 (sum of 1..64)");
     println!();
-    
+
     if result != 2080 {
         println!("❌ FAIL: Got {} instead of 2080", result);
         println!();

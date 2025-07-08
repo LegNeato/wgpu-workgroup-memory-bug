@@ -48,3 +48,13 @@ jobs:
       with:
         name: shader-spirv-${{ matrix.os }}
         path: "*.spv"
+        
+    - name: Upload HLSL and trace artifacts
+      if: always() && matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: hlsl-debug-artifacts
+        path: |
+          generated.hlsl
+          trace.txt
+        if-no-files-found: ignore
