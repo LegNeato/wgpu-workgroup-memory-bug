@@ -21,6 +21,24 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
     
+    - name: Install Vulkan SDK
+      uses: humbletim/install-vulkan-sdk@v1.2
+      with:
+        version: 1.4.309.0
+        cache: true
+    
+    - if: ${{ runner.os == 'Linux' }}
+      name: Linux - Install native dependencies
+      run: sudo apt install libwayland-cursor0 libxkbcommon-dev libwayland-dev
+    
+    - if: ${{ runner.os == 'Linux' }}
+      name: Install xvfb, llvmpipe and lavapipe
+      run: |
+        sudo apt-get update -y -qq
+        sudo add-apt-repository ppa:kisak/turtle -y
+        sudo apt-get update
+        sudo apt install -y xvfb libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers
+    
     - name: Build
       run: cargo build --verbose
     
