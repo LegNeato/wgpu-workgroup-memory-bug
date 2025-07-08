@@ -1,24 +1,33 @@
-@group(0) @binding(0) var<storage, read> input_buffer: array<u32>;
-@group(0) @binding(1) var<storage, read_write> output_buffer: array<u32>;
+// Minimal reproduction of the workgroup memory race condition bug
+// Expected: Each thread writes its ID + 1000, then we verify all values
+// Actual on Windows/DX12: Values get overwritten with zeros during initialization
 
-var<workgroup> shared_data: array<u32, 64>;
+@group(0) @binding(0)
+var<storage, read_write> output: array<u32>;
 
-@compute @workgroup_size(64, 1, 1)
+var<workgroup> shared_mem: array<u32, 64>;
+
+@compute @workgroup_size(64)
 fn main(@builtin(local_invocation_id) local_id: vec3<u32>) {
     let tid = local_id.x;
     
-    // Each thread writes its value to shared memory
-    shared_data[tid] = input_buffer[tid];
+    // CRITICAL: Each thread immediately writes a non-zero value
+    // Using tid + 1000 to make corruption more obvious (zeros vs 1000+)
+    shared_mem[tid] = tid + 1000u;
     
-    // Synchronize all threads in the workgroup
+    // Barrier to ensure all writes complete
     workgroupBarrier();
     
-    // Thread 0 sums all values
+    // Check multiple values to increase chance of detecting corruption
     if (tid == 0u) {
-        var sum = 0u;
-        for (var i = 0u; i < 64u; i = i + 1u) {
-            sum = sum + shared_data[i];
-        }
-        output_buffer[0] = sum;
+        // Check 8 different thread values
+        output[0] = shared_mem[0];   // Should be 1000
+        output[1] = shared_mem[1];   // Should be 1001
+        output[2] = shared_mem[31];  // Should be 1031
+        output[3] = shared_mem[32];  // Should be 1032
+        output[4] = shared_mem[47];  // Should be 1047
+        output[5] = shared_mem[48];  // Should be 1048
+        output[6] = shared_mem[62];  // Should be 1062
+        output[7] = shared_mem[63];  // Should be 1063
     }
 }

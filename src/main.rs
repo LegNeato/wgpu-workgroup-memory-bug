@@ -1,25 +1,25 @@
-use wgpu::util::DeviceExt;
-
 fn main() {
     env_logger::init();
     pollster::block_on(run());
 }
 
 async fn run() {
-    // Initialize wgpu
+    // Force DX12 on Windows to trigger the bug
+    let backends = if cfg!(windows) {
+        wgpu::Backends::DX12
+    } else {
+        wgpu::Backends::all()
+    };
+
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
+        backends,
         ..Default::default()
     });
 
     let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        })
+        .request_adapter(&wgpu::RequestAdapterOptions::default())
         .await
-        .expect("Failed to find an appropriate adapter");
+        .expect("Failed to find adapter");
 
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
@@ -32,86 +32,65 @@ async fn run() {
         .await
         .expect("Failed to create device");
 
-    println!("Using adapter: {:?}", adapter.get_info());
+    println!("=== Minimal Workgroup Memory Race Condition Test ===");
+    println!("Adapter: {}", adapter.get_info().name);
+    println!("Backend: {:?}", adapter.get_info().backend);
+    println!();
 
-    // Create shader module
+    // Minimal shader that demonstrates the race condition
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Workgroup Memory Test Shader"),
+        label: Some("Minimal Repro"),
         source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
     });
 
-    // Create buffers
-    let input_data: Vec<u32> = (1..=64).collect();
-    let input_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Input Buffer"),
-        contents: bytemuck::cast_slice(&input_data),
-        usage: wgpu::BufferUsages::STORAGE,
-    });
-
-    let output_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Output Buffer"),
-        contents: bytemuck::cast_slice(&[0u32; 1]),
+    // Output buffer to read results
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Output"),
+        size: 32, // 8 u32 values
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
     });
 
     let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Staging Buffer"),
-        size: 4,
+        label: Some("Staging"),
+        size: 32,
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
 
-    // Create bind group
+    // Bind group
     let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("Bind Group Layout"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::COMPUTE,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: false },
+                has_dynamic_offset: false,
+                min_binding_size: None,
             },
-            wgpu::BindGroupLayoutEntry {
-                binding: 1,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: false },
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            },
-        ],
+            count: None,
+        }],
     });
 
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Bind Group"),
         layout: &bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: input_buffer.as_entire_binding(),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: output_buffer.as_entire_binding(),
-            },
-        ],
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: output_buffer.as_entire_binding(),
+        }],
     });
 
-    // Create compute pipeline
+    // Pipeline
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Pipeline Layout"),
         bind_group_layouts: &[&bind_group_layout],
         push_constant_ranges: &[],
     });
 
-    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("Compute Pipeline"),
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Pipeline"),
         layout: Some(&pipeline_layout),
         module: &shader,
         entry_point: Some("main"),
@@ -119,45 +98,69 @@ async fn run() {
         cache: None,
     });
 
-    // Execute compute pass
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Command Encoder"),
-    });
-
+    // Run the shader
+    let mut encoder = device.create_command_encoder(&Default::default());
     {
-        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("Compute Pass"),
-            timestamp_writes: None,
-        });
-        compute_pass.set_pipeline(&compute_pipeline);
-        compute_pass.set_bind_group(0, &bind_group, &[]);
-        compute_pass.dispatch_workgroups(1, 1, 1);
+        let mut pass = encoder.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.dispatch_workgroups(1, 1, 1);
     }
-
-    // Copy output to staging buffer
-    encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, 4);
-
+    encoder.copy_buffer_to_buffer(&output_buffer, 0, &staging_buffer, 0, 32);
     queue.submit(std::iter::once(encoder.finish()));
 
-    // Read result
-    let buffer_slice = staging_buffer.slice(..);
-    let (sender, receiver) = std::sync::mpsc::channel();
-    buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-        sender.send(result).unwrap();
-    });
+    // Read results
+    let slice = staging_buffer.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
     let _ = device.poll(wgpu::MaintainBase::Wait);
-    receiver.recv().unwrap().unwrap();
+    rx.recv().unwrap().unwrap();
 
-    let data = buffer_slice.get_mapped_range();
-    let result = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    let data = slice.get_mapped_range();
+    let mut values = Vec::new();
+    for i in 0..8 {
+        let offset = i * 4;
+        values.push(u32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]));
+    }
 
-    println!("Result: {}", result);
-    println!("Expected: 2080 (sum of 1..64)");
+    println!("Test: Each thread writes (thread_id + 1000) to workgroup memory");
+    println!("Expected: Non-zero values (1000, 1001, 1031, 1032, 1047, 1048, 1062, 1063)");
+    println!();
+    println!("Results:");
 
-    if result != 2080 {
-        println!("❌ FAIL: Got {} instead of 2080", result);
+    let expected = [1000, 1001, 1031, 1032, 1047, 1048, 1062, 1063];
+    let indices = [0, 1, 31, 32, 47, 48, 62, 63];
+    let mut corrupted = false;
+
+    for i in 0..8 {
+        let is_correct = values[i] == expected[i];
+        let status = if is_correct { "✓" } else { "✗ CORRUPTED" };
+        println!(
+            "  shared[{}] = {} (expected: {}) {}",
+            indices[i], values[i], expected[i], status
+        );
+        if !is_correct {
+            corrupted = true;
+        }
+    }
+
+    println!();
+
+    if corrupted {
+        println!("❌ BUG DETECTED: Workgroup memory was corrupted!");
+        println!();
+        println!("Explanation: The race condition in Naga's HLSL backend caused");
+        println!("thread 0's zero-initialization to overwrite values that other");
+        println!("threads had already written to workgroup memory.");
+        println!();
+        println!("Notice how some or all values are 0 instead of 1000+");
         std::process::exit(1);
     } else {
-        println!("✅ PASS");
+        println!("✅ PASS: All values are correct");
     }
 }
