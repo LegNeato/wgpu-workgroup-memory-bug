@@ -1,0 +1,10 @@
+[package]
+name = "wgpu-workgroup-memory-bug"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wgpu = "0.20"
+bytemuck = "1.14"
+pollster = "0.3"
+env_logger = "0.11"
