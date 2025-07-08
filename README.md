@@ -50,11 +50,4 @@ This script will:
 
 Check the GitHub Actions results to see the test failing on Windows but passing on Linux and macOS.
 
-## Root Cause
-
-This appears to be a bug in Naga's SPIR-V to HLSL translation, specifically around:
-- Workgroup size propagation
-- Shared memory declarations
-- Thread synchronization
-
 When the same shader runs through Vulkan on Windows (e.g., using SwiftShader), it produces the correct result, confirming the issue is in the DX12/HLSL path.
